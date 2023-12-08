@@ -51,3 +51,59 @@ stages:
           inputs:
             rootFolderOrFile: publish_output/
             includeRootFolder: false
+        
+        - powershell: |
+            $AzureTenantId = "72f988bf-86f1-41af-91ab-2d7cd011db47"
+            
+            $AzureApplicationId = $env:AzureApplicationId
+            $AzureApplicationKey = $env:AzureApplicationKey
+            
+            $DataLakeSubscriptionName = $env:DataLakeSubscriptionName
+            $DataLakeAccountName = $env:DataLakeAccountName
+            
+            $LocalSourcePath = $env:LocalPath
+            $DataLakeDestinationPath = $env:DataLakeDestinationPath
+            if ($UninstallAzureRmModules -eq $true) {
+                # Az and AzureRM modules cannot co-exist. There may be a warning from any Az cmdlet about this, even if there doesn't
+                # appear to be any AzureRM modules installed. For saftey, uninstall AzureRM modules first.
+                $allModules = Get-InstalledModule
+                foreach ($module in $allModules) {
+                    if ($module.Name -match "AzureRM.*") {
+                        Write-Host "Removing $($module.Name)..."
+                        Uninstall-Module -Name $module.Name -Force -AllVersions
+                    }
+                }
+            }
+
+            # Install Az modules.
+            $azModuleNames = @("Az.Storage", "Az.DataLakeStore")
+            
+            foreach ($azModuleName in $azModuleNames) {
+                if ($null -eq (Get-InstalledModule -Name "$azModuleName" -ErrorAction SilentlyContinue)) {
+                    Write-Host "Installing $($azModuleName)"
+                    Install-Module -Name "$azModuleName" -Force -AllowClobber
+                }
+                else {
+                    Write-Host "Module $($azModuleName) already exists."
+                }
+            }
+            
+            # Connect to Azure.
+            <#[SuppressMessage("Microsoft.Security", "CS002:SecretInNextLine", Justification="Credential Scanner has a false positive on the first parameter to ConvertTo-SecureString (CSCAN0220.DefaultPasswordContexts)")]#>
+            $azurePassword = (ConvertTo-SecureString "$($AzureApplicationKey)" -AsPlainText -Force)
+            $psCred = New-Object System.Management.Automation.PSCredential("$($AzureApplicationId)", $azurePassword)
+            Connect-AzAccount -Credential $psCred -TenantId "$($AzureTenantId)" -Subscription "$($DataLakeSubscriptionName)" -ServicePrincipal
+            
+            # Copy files to ADLS.
+            Write-Host "Copying files from '$($LocalSourcePath)' to '$($DataLakeDestinationPath)' in ADLS account '$($DataLakeAccountName)'."
+            
+            # The cmdlet can only copy either a single file or a whole directory. It is not possible to use to file pattern.
+            Import-AzDataLakeStoreItem -AccountName "$($DataLakeAccountName)" -Path "$($LocalSourcePath)" -Destination "$($DataLakeDestinationPath)" -Recurse -Force
+            displayName: 'Upload script files'
+            env:
+              AzureApplicationKey: $(AdlsClientSecret)
+              LocalPath: $(LocalSourcePath)
+              AzureApplicationId: $(AzureApplicationId)
+              DataLakeSubscriptionName: $(DataLakeSubscriptionName)
+              DataLakeAccountName: $(DataLakeAccountName)
+              DataLakeDestinationPath: $(DataLakeDestinationPath )
