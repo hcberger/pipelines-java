@@ -1,5 +1,10 @@
 trigger:
-- main
+  branches:
+    include:
+    - refs/heads/master
+  paths:
+    include:
+    - /Data/PartnerDataPlatform/PartnerDataPlatformScopes
 
 pool:
   vmImage: 'windows-latest'
@@ -7,12 +12,14 @@ pool:
 variables:
   buildConfiguration: 'Release'
 stages:
-  - stage：stage
+  - stage: stage
     displayName: 'Execute Stage'
     jobs:
       - job: job
         displayName: Job
         steps:
+        - checkout: self
+          fetchDepth: 1
         - task: UseDotNet@2
           displayName: 'Install .NET Core SDK'
           inputs:
@@ -21,13 +28,26 @@ stages:
             includePreviewVersions: true # Required for preview versions
 
         - task: DotNetCoreCLI@2
+          displayName: restore
           inputs:
-            command: 'restore'
-            feedsToUse: 'select'
-            vstsFeed: 'my-vsts-feed' # A series of numbers and letters
+            command: restore
+            projects: $(Build.Repository.LocalPath)/Data/ContentInsightPipeline/UtilityLib/UtilityLib/UtilityLib.csproj
+            selectOrConfig: config
+            feedRestore: one
+            nugetConfigPath: NuGet.config
 
         - task: DotNetCoreCLI@2
+          displayName: Build project
           inputs:
-            command: 'build'
-            arguments: '--configuration $(buildConfiguration)'
-          displayName: 'dotnet build $(buildConfiguration)'
+            projects: '**/UtilityLib.csproj'
+            arguments: --output publish_output --configuration Release
+        - task: AzureArtifacts.manifest-generator-task.manifest-generator-task.ManifestGeneratorTask@0
+          displayName: 'Manifest Generator'
+          inputs:
+            BuildDropPath: publish_output/
+
+        - task: ArchiveFiles@2
+          displayName: Archive files
+          inputs:
+            rootFolderOrFile: publish_output/
+            includeRootFolder: false
