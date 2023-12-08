@@ -4,7 +4,7 @@ trigger:
     - refs/heads/master
   paths:
     include:
-    - /Data/PartnerDataPlatform/PartnerDataPlatformScopes
+    - /Data/ContentInsightPipeline/UtilityLib
 
 pool:
   vmImage: 'windows-latest'
